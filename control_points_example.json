@@ -1,0 +1,47 @@
+{
+  "_comment": "Custom configuration for coverage_diff.py. All sections are optional — omit any section to use built-in defaults.",
+
+  "_comment_registration_points": "Pairs of pixel coordinates: [x_before, y_before, x_after, y_after]. Pick 5–8 identifiable locations visible in both screenshots (major city coverage clusters, coastal landmarks). More points = better registration, but each must be accurately located.",
+  "registration_points": [
+    [715,  668,  280,  570],
+    [1245, 775,  775,  645],
+    [1320, 868,  900,  715],
+    [1545, 745, 1040,  615],
+    [1570, 610, 1110,  450],
+    [1355, 190,  893,   60]
+  ],
+
+  "_comment_geo_control_points": "Pixel coordinates in the AFTER image mapped to WGS84 lon/lat. Used to project state boundaries onto the image. Format: [px_x, px_y, longitude, latitude].",
+  "geo_control_points": [
+    [ 280,  570,  115.86, -31.95],
+    [ 775,  645,  138.60, -34.93],
+    [ 900,  715,  144.96, -37.81],
+    [1040,  615,  151.21, -33.87],
+    [1110,  450,  153.03, -27.47],
+    [ 893,   60,  147.15,  -9.44],
+    [1099,  465,  153.54, -28.16],
+    [ 979,  268,  146.82, -19.25]
+  ],
+
+  "_comment_ui_exclusions": "Rectangular regions [y0, y1, x0, x1] in the BEFORE image that contain UI chrome (legend boxes, buttons, attribution bars). These are set to 'invalid' and excluded from analysis. Set to [] if the before image has no UI overlay.",
+  "ui_exclusions": [
+    [0,    200,    0,  510],
+    [0,    120,  480,  930],
+    [895, 1362,    0, 1140],
+    [1035, 1362, 1590, 2260],
+    [1345, 1362,    0, 2260]
+  ],
+
+  "_comment_ui_exclusions_after": "Same format as ui_exclusions, but for the AFTER image. New in v2 — the after image is now masked too. Leave [] if it was cropped to the map canvas.",
+  "ui_exclusions_after": [],
+
+  "_comment_color_thresholds": "Pixel colour thresholds for classifying coverage types. ocean_rgb is the background map colour. green_lead / purple_lead are how much the dominant channel must exceed the others.",
+  "color_thresholds": {
+    "ocean_rgb":   [208, 208, 208],
+    "ocean_tol":   14,
+    "green_lead":  30,
+    "green_min":   60,
+    "purple_lead": 20,
+    "purple_min":  60
+  }
+}
