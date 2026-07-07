@@ -38,10 +38,11 @@ Changes in v2
   --force is given.
 * NEW: robust registration — RANSAC (cv2.estimateAffine2D) with least-squares
   fallback, so one badly digitized control point cannot skew the fit.
-* NEW: area-weighted majority warping — class masks are blurred to the target
-  scale and warped bilinearly, then combined by majority vote, instead of
-  nearest-neighbour point sampling (reduces boundary aliasing when the
-  before image is higher resolution than the after image).
+* Warping remains nearest-neighbour (as in v1) — it best preserves the thin
+  highway coverage corridors that dominate the Telstra map. An experimental
+  blur+majority-vote warp is available via --warp-mode majority, but it
+  erases thin corridors when downsampling and produces spurious "gained"
+  coverage along roads; it is NOT recommended for this data.
 * NEW: boundary-noise sensitivity band — coverage masks are eroded/dilated by
   2 px and the "lost" area recomputed, giving an honest error range for the
   headline number.
@@ -324,26 +325,38 @@ def report_registration_quality(M: np.ndarray,
     return rms
 
 
-def warp_label(label: np.ndarray, M: np.ndarray, target_shape: tuple) -> np.ndarray:
+def warp_label(label: np.ndarray, M: np.ndarray, target_shape: tuple,
+               mode: str = "nearest") -> np.ndarray:
     """
     Warp a uint8 label map using affine matrix M into target_shape (H, W).
+    Out-of-bounds pixels are set to 255 (invalid).
 
-    v2: area-weighted majority vote instead of nearest-neighbour sampling.
-    Each class {0, 1, 2} is warped as a soft (float) mask — pre-blurred to the
-    target scale when downsampling — and the class with the largest warped
-    weight wins. Pixels whose warped validity weight < 0.5 (out-of-frame or
-    dominated by UI-masked source pixels) are set to 255 (invalid).
+    mode="nearest" (DEFAULT, same behaviour as v1):
+        Nearest-neighbour sampling. Preserves thin linear features — highway
+        coverage corridors on the Telstra map are only a few pixels wide, and
+        smoothing-based approaches dilute them below the surrounding "land"
+        class, which then shows up as spurious "gained" coverage in the diff.
+
+    mode="majority" (opt-in via --warp-mode majority):
+        Blur + bilinear warp of per-class soft masks combined by argmax.
+        Slightly less aliasing on large blob boundaries, but ERASES thin
+        corridors when downsampling — do not use for maps dominated by
+        road-following coverage. Kept for experimentation only.
     """
     H, W = target_shape
 
-    # Estimate the linear scale factor of the transform; if we are shrinking
-    # (scale < 1), low-pass filter the masks so bilinear sampling approximates
-    # an area average rather than point sampling.
+    if mode == "nearest":
+        return cv2.warpAffine(
+            label, M, (W, H),
+            flags=cv2.INTER_NEAREST,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=255,
+        )
+
+    # --- experimental majority-vote path ---
     A = M[:, :2]
     scale = math.sqrt(abs(float(np.linalg.det(A))))
-    sigma = 0.0
-    if scale < 0.99:
-        sigma = 0.5 / max(scale, 1e-6)   # heuristic anti-alias sigma in src px
+    sigma = 0.5 / max(scale, 1e-6) if scale < 0.99 else 0.0
 
     def soft_warp(mask_f32: np.ndarray) -> np.ndarray:
         if sigma > 0.3:
@@ -807,7 +820,7 @@ def plot_diff_map(warped1: np.ndarray,
 
     # Legend
     legend_items = [
-        ((220, 40,  40), "Covered in April — removed by ACMA threshold"),
+        ((220, 40,  40), "Covered in April - removed by ACMA threshold"),
         (( 40, 90, 220), "Newly shown as covered"),
         ((190, 190, 190), "Covered in both"),
         ((255, 255, 255), "No coverage, both periods"),
@@ -934,7 +947,8 @@ def run(before_path: str,
         output_dir:  str,
         state_data:  str = None,
         config:      dict = None,
-        force:       bool = False):
+        force:       bool = False,
+        warp_mode:   str = "nearest"):
     """
     Full pipeline: load → classify → register → geo-project → stats → plots.
     """
@@ -968,7 +982,7 @@ def run(before_path: str,
     pts_dst = np.array([[p[2], p[3]] for p in reg_pts], dtype=float)
     M       = fit_affine(pts_src, pts_dst)
     report_registration_quality(M, reg_pts, force=force)   # v2: residual QA
-    warped1 = warp_label(label1, M, (H2, W2))
+    warped1 = warp_label(label1, M, (H2, W2), mode=warp_mode)
 
     # ---- Geographic transform ----
     print("Fitting geographic transform …")
@@ -1035,6 +1049,11 @@ def main():
         "--force", action="store_true",
         help="Proceed even if registration RMS residual exceeds the abort threshold",
     )
+    parser.add_argument(
+        "--warp-mode", choices=["nearest", "majority"], default="nearest",
+        help="Label warping method (default: nearest — preserves thin highway "
+             "coverage corridors; 'majority' is experimental and erases them)",
+    )
 
     args = parser.parse_args()
 
@@ -1050,6 +1069,7 @@ def main():
         state_data=args.state_data,
         config=config,
         force=args.force,
+        warp_mode=args.warp_mode,
     )
 
 
